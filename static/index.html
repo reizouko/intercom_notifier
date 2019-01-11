@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Web Push Test</title>
+  </head>
+  <body>
+    <div>
+      <button type="button" id="subscribe" disabled>通知を受け取る</button>
+      <button type="button" id="unsubscribe" disabled>通知を受け取るのをやめる</button>
+    </div>
+    <script>
+function urlUint8ArrayToBase64URL(unit) {
+    return btoa(String.fromCharCode.apply(null, unit)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+const buttonSubscribe = document.getElementById("subscribe");
+const buttonUnsubscribe = document.getElementById("unsubscribe");
+
+const publicKey = fetch("/key").then(response => response.json()).then(json => urlBase64ToUint8Array(json.publicKey));
+
+navigator.serviceWorker.register("sw.js");
+navigator.serviceWorker.ready.then(registration => {
+  registration.pushManager.getSubscription().then(subscription => {
+    buttonSubscribe.disabled = !!subscription;
+    buttonUnsubscribe.disabled = !subscription;
+  });
+  Notification.requestPermission(permission => {
+    console.log(`permission ${permission}`);
+  });
+});
+
+function send(endpoint, subscription) {
+  fetch(endpoint, {
+    method: "POST",
+    mode: "cors",
+    cache: "no-cache",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    body: JSON.stringify({
+      endpoint: subscription.endpoint,
+      key: urlUint8ArrayToBase64URL(new Uint8Array(subscription.getKey("p256dh"))),
+      auth: urlUint8ArrayToBase64URL(new Uint8Array(subscription.getKey("auth")))
+    })
+  });
+}
+function sendSubscription(subscription) {
+  send('/subscribe', subscription);
+  buttonSubscribe.disabled = true;
+  buttonUnsubscribe.disabled = false;
+}
+function sendUnsubscription(subscription) {
+  send('/unsubscribe', subscription);
+  buttonSubscribe.disabled = false;
+  buttonUnsubscribe.disabled = true;
+}
+
+buttonSubscribe.addEventListener("click", () => {
+  navigator.serviceWorker.ready.then(registration => {
+    registration.pushManager.getSubscription().then(subscription => {
+      if (!subscription) {
+        publicKey.then(key => {
+          registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: key
+          }).then(sendSubscription);
+        });
+      }
+    });
+  });
+}, false);
+
+buttonUnsubscribe.addEventListener("click", () => {
+  navigator.serviceWorker.ready.then(registration => {
+    registration.pushManager.getSubscription().then(subscription => {
+      if (subscription) {
+        subscription.unsubscribe();
+        sendUnsubscription(subscription);
+      }
+    });
+  });
+}, false);
+    </script>
+  </body>
+</html>

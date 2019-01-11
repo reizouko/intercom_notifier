@@ -1,0 +1,19 @@
+{
+  "name": "intercom_notifier",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "reizouko",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "express": "^4.16.4",
+    "moment": "^2.23.0",
+    "moment-timezone": "^0.5.23",
+    "node-grovepi": "^2.2.2",
+    "web-push": "^3.3.3"
+  }
+}
