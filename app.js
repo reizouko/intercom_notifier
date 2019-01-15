@@ -1,12 +1,14 @@
 const cluster = require('cluster');
 const webpush = require('web-push');
+const { GrovePi } = require('node-grovepi');
 const moment = require("moment-timezone");
 
 class SensorObserver {
-  constructor(LoudnessAnalogSensor, notify) {
+  constructor(LoudnessAnalogSensor, notify, sendThreshold) {
     this.sensor = new LoudnessAnalogSensor(0, 10);
     this.notify = notify;
     this.notifying = false;
+    this.sendThreshold = sendThreshold;
   }
 
   start() {
@@ -15,11 +17,17 @@ class SensorObserver {
       const { avg, max } = this.sensor.readAvgMax();
       this.sensor.stop();
 
-      const threshold = avg + (max - avg) * 3;
-      console.log(`avg = ${avg}, max = ${max}, threshold = ${threshold}`);
+      this.threshold = avg + (max - avg) * 3;
+      console.log(`avg = ${avg}, max = ${max}, init threshold = ${this.threshold}`);
+      this.sendThreshold({
+        avg: avg,
+        max: max,
+        threshold: this.threshold
+      })
 
       this.sensor.stream(10, loudness => {
-        if (loudness > threshold && !this.notifying) {
+        if (loudness > this.threshold && !this.notifying) {
+          console.log(`call detected: level ${loudness}`);
           this.notifying = true;
           this.notify();
           setTimeout(() => {
@@ -27,7 +35,7 @@ class SensorObserver {
           }, 5000);
         }
       });
-    }, 10000);
+    }, 5000);
   }
 
   stop() {
@@ -102,6 +110,36 @@ function serveHttp(sensorWorker) {
     });
   });
 
+  let thresholdInfo = null;
+  
+  app.get('/threshold', (req, res) => {
+    if (thresholdInfo == null) {
+      const thresholdTimer = setInterval(() => {
+        if (thresholdInfo != null) {
+          clearInterval(thresholdTimer);
+          res.json(thresholdInfo);
+        }
+      }, 500);
+    } else {
+      res.json(thresholdInfo);
+    }
+  });
+  
+  app.put('/threshold', (req, res) => {
+    if (thresholdInfo != null) {
+      console.log(`${now()} changed threshold to ${req.body.threshold}`);
+      thresholdInfo.threshold = req.body.threshold;
+      sensorWorker.send({
+        type: 'threshold',
+        threshold: thresholdInfo.threshold
+      });
+    }
+  });
+
+  sensorWorker.on('message', message => {
+    thresholdInfo = message;
+  });
+
   const port = '3000';
   const options = {
     key: fs.readFileSync('./server.key'),
@@ -115,6 +153,19 @@ function serveHttp(sensorWorker) {
 function startSensor() {
   const subscribers = [];
 
+  function notify() {
+    subscribers.forEach(subscriber => {
+      webpush.sendNotification(subscriber, JSON.stringify({
+        message: 'visitor now'
+      }));
+    });
+  }
+  function sendThreshold(thresholdInfo) {
+    process.send(thresholdInfo);
+  }
+
+  const sensor = new SensorObserver(GrovePi.sensors.LoudnessAnalog, notify, sendThreshold);
+  
   process.on('message', message => {
     switch (message.type) {
       case 'keys':
@@ -150,11 +201,13 @@ function startSensor() {
         if (subscriberIndex >= 0) {
           subscribers.splice(subscriberIndex, 1);
         }
-        break
+        break;
+      case 'threshold':
+        sensor.threshold = message.threshold;
+        break;
     }
   });
-
-  const { GrovePi } = require('node-grovepi');
+  
   const Board = GrovePi.board;
 
   const board = new Board({
@@ -167,16 +220,6 @@ function startSensor() {
       if (res) {
         console.log(`GrovePi Version :: ${board.version()}`);
 
-        function notify() {
-          console.log(`${now()} visitor calls!`);
-          subscribers.forEach(subscriber => {
-            webpush.sendNotification(subscriber, JSON.stringify({
-              message: 'visitor now'
-            }));
-          });
-        }
-
-        const sensor = new SensorObserver(GrovePi.sensors.LoudnessAnalog, notify);
         sensor.start();
 
         process.on('SIGINT', () => {

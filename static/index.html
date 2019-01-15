@@ -3,12 +3,22 @@
   <head>
     <meta charset="utf-8">
     <title>Web Push Test</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.css" integrity="sha256-rByPlHULObEjJ6XQxW/flG2r+22R5dKiAoef+aXWfik=" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.theme.min.css" integrity="sha256-AjyoyaRtnGVTywKH/Isxxu5PXI0s4CcE0BzPAX83Ppc=" crossorigin="anonymous" />
+    <script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js" integrity="sha256-KM512VNnjElC30ehFwehXjx1YCHPiQkOPmqnrWtpccM=" crossorigin="anonymous"></script>
   </head>
   <body>
     <div>
       <button type="button" id="subscribe" disabled>通知を受け取る</button>
       <button type="button" id="unsubscribe" disabled>通知を受け取るのをやめる</button>
     </div>
+    <div>
+      <div>avg = <span id="avg"></span></div>
+      <div>max = <span id="max"></span></div>
+      <div>threshold = <span id="threshold"></span></div>
+    </div>
+    <div id="slider"></div>
     <script>
 function urlUint8ArrayToBase64URL(unit) {
     return btoa(String.fromCharCode.apply(null, unit)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -30,6 +40,7 @@ const buttonSubscribe = document.getElementById("subscribe");
 const buttonUnsubscribe = document.getElementById("unsubscribe");
 
 const publicKey = fetch("/key").then(response => response.json()).then(json => urlBase64ToUint8Array(json.publicKey));
+const initThreshold = fetch("/threshold").then(response => response.json());
 
 navigator.serviceWorker.register("sw.js");
 navigator.serviceWorker.ready.then(registration => {
@@ -93,6 +104,35 @@ buttonUnsubscribe.addEventListener("click", () => {
     });
   });
 }, false);
+
+initThreshold.then(thresholdInfo => {
+  document.getElementById("avg").innerText = thresholdInfo.avg;
+  document.getElementById("max").innerText = thresholdInfo.max;
+  const thresholdText = document.getElementById("threshold");
+  thresholdText.innerText = thresholdInfo.threshold;
+  $("#slider").slider({
+    min: 0,
+    max: 1023,
+    value: thresholdInfo.threshold,
+    stop: (event, ui) => {
+      const currentValue = ui.value;
+      fetch("/threshold", {
+        method: "PUT",
+        mode: "cors",
+        cache: "no-cache",
+        headers: {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        body: JSON.stringify({
+          threshold: currentValue
+        })
+      });
+    },
+    change: (event, ui) => {
+      thresholdText.innerText = ui.value;
+    }
+  });
+});
     </script>
   </body>
 </html>
