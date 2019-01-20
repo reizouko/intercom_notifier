@@ -76,7 +76,7 @@ Copyright 2019 Plus Project
 3. Connect sound sensor to A0 port of GrovePi+.
 4. Prepare an SSL certificate because https connection required. Self-signed certificate is OK as well.
 
-## インストール
+## Installation
 
 Set up GrovePi+ referring to:  
 https://www.dexterindustries.com/GrovePi/get-started-with-the-grovepi/
